@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, of, throwError } from 'rxjs';
-import { catchError } from 'rxjs/operators';
+import { catchError, map, tap } from 'rxjs/operators';
 import { Expense, SettlementSummaryResponse, SuggestedPayment } from '../models/expense.model';
 
 @Injectable({
@@ -10,8 +10,8 @@ import { Expense, SettlementSummaryResponse, SuggestedPayment } from '../models/
 export class ApiService {
   private readonly STORAGE_PEOPLE = 'smartsplit_people';
   private readonly STORAGE_EXPENSES = 'smartsplit_expenses';
+  private readonly API_PREFIX = '/api';
 
-  // In-memory state with LocalStorage persistence for instant single-try Vercel deployment
   private people: string[] = [];
   private expenses: Expense[] = [];
 
@@ -22,13 +22,9 @@ export class ApiService {
   private loadFromStorage(): void {
     try {
       const savedPeople = localStorage.getItem(this.STORAGE_PEOPLE);
-      if (savedPeople) {
-        this.people = JSON.parse(savedPeople);
-      }
+      if (savedPeople) this.people = JSON.parse(savedPeople);
       const savedExpenses = localStorage.getItem(this.STORAGE_EXPENSES);
-      if (savedExpenses) {
-        this.expenses = JSON.parse(savedExpenses);
-      }
+      if (savedExpenses) this.expenses = JSON.parse(savedExpenses);
     } catch (e) {
       this.people = [];
       this.expenses = [];
@@ -45,7 +41,17 @@ export class ApiService {
   }
 
   getTrip(): Observable<{ people: string[]; expenses: Expense[] }> {
-    return of({ people: [...this.people], expenses: [...this.expenses] });
+    return this.http.get<{ success: boolean; people: string[]; expenses: Expense[] }>(`${this.API_PREFIX}/trip`).pipe(
+      map(res => {
+        this.people = res.people || [];
+        this.expenses = res.expenses || [];
+        this.saveToStorage();
+        return { people: [...this.people], expenses: [...this.expenses] };
+      }),
+      catchError(() => {
+        return of({ people: [...this.people], expenses: [...this.expenses] });
+      })
+    );
   }
 
   addPerson(name: string): Observable<string> {
@@ -53,66 +59,102 @@ export class ApiService {
     if (!trimmed) {
       return throwError(() => ({ error: { error: 'Please enter a name.' } }));
     }
-    if (this.people.some(p => p.toLowerCase() === trimmed.toLowerCase())) {
-      return throwError(() => ({ error: { error: 'That name is already in the group.' } }));
-    }
-    this.people.push(trimmed);
-    this.saveToStorage();
-    return of(trimmed);
+
+    return this.http.post<{ success: boolean; person: string; people: string[] }>(`${this.API_PREFIX}/members`, { name: trimmed }).pipe(
+      map(res => {
+        this.people = res.people || [...this.people, res.person];
+        this.saveToStorage();
+        return res.person;
+      }),
+      catchError(err => {
+        if (err.status === 400 && err.error?.error) {
+          return throwError(() => err);
+        }
+        if (this.people.some(p => p.toLowerCase() === trimmed.toLowerCase())) {
+          return throwError(() => ({ error: { error: 'That name is already in the group.' } }));
+        }
+        this.people.push(trimmed);
+        this.saveToStorage();
+        return of(trimmed);
+      })
+    );
   }
 
   removePerson(name: string): Observable<any> {
-    const trimmed = (name || '').trim().toLowerCase();
-    this.people = this.people.filter(p => p.toLowerCase() !== trimmed);
-    this.expenses = this.expenses.filter(e => e.paid_by.toLowerCase() !== trimmed);
-    this.expenses.forEach(e => {
-      e.participants = e.participants.filter(p => p.toLowerCase() !== trimmed);
-    });
-    this.expenses = this.expenses.filter(e => e.participants.length > 0);
-    this.saveToStorage();
-    return of({ success: true, people: [...this.people], expenses: [...this.expenses] });
+    const trimmed = (name || '').trim();
+    const enc = encodeURIComponent(trimmed);
+    return this.http.delete<any>(`${this.API_PREFIX}/members/${enc}`).pipe(
+      tap(res => {
+        if (res?.people) this.people = res.people;
+        if (res?.expenses) this.expenses = res.expenses;
+        this.saveToStorage();
+      }),
+      catchError(() => {
+        const lower = trimmed.toLowerCase();
+        this.people = this.people.filter(p => p.toLowerCase() !== lower);
+        this.expenses = this.expenses.filter(e => e.paid_by.toLowerCase() !== lower);
+        this.expenses.forEach(e => {
+          e.participants = e.participants.filter(p => p.toLowerCase() !== lower);
+        });
+        this.expenses = this.expenses.filter(e => e.participants.length > 0);
+        this.saveToStorage();
+        return of({ success: true });
+      })
+    );
   }
 
   addExpense(expense: Expense): Observable<Expense> {
-    const trimmedDesc = (expense.description || '').trim();
-    if (!trimmedDesc) {
-      return throwError(() => ({ error: { error: 'Please enter a description.' } }));
-    }
-    const numAmount = Number(expense.amount);
-    if (isNaN(numAmount) || numAmount <= 0) {
-      return throwError(() => ({ error: { error: 'Please enter an amount greater than zero.' } }));
-    }
-    if (!expense.paid_by || !this.people.includes(expense.paid_by)) {
-      return throwError(() => ({ error: { error: `Please choose one of the listed people: ${this.people.join(', ')}` } }));
-    }
-    if (!Array.isArray(expense.participants) || expense.participants.length === 0) {
-      return throwError(() => ({ error: { error: 'Please select at least one participant.' } }));
-    }
-
-    const newExp: Expense = {
-      id: 'exp-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
-      description: trimmedDesc,
-      amount: Number(numAmount.toFixed(2)),
-      paid_by: expense.paid_by,
-      participants: [...expense.participants]
-    };
-
-    this.expenses.push(newExp);
-    this.saveToStorage();
-    return of(newExp);
+    return this.http.post<{ success: boolean; expense: Expense }>(`${this.API_PREFIX}/expenses`, expense).pipe(
+      map(res => {
+        this.expenses.push(res.expense);
+        this.saveToStorage();
+        return res.expense;
+      }),
+      catchError(err => {
+        if (err.status === 400 && err.error?.error) {
+          return throwError(() => err);
+        }
+        const newExp: Expense = {
+          id: 'exp-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+          description: expense.description.trim(),
+          amount: Number(Number(expense.amount).toFixed(2)),
+          paid_by: expense.paid_by,
+          participants: [...expense.participants]
+        };
+        this.expenses.push(newExp);
+        this.saveToStorage();
+        return of(newExp);
+      })
+    );
   }
 
   deleteExpense(id: string): Observable<any> {
-    this.expenses = this.expenses.filter(e => e.id !== id);
-    this.saveToStorage();
-    return of({ success: true });
+    return this.http.delete<any>(`${this.API_PREFIX}/expenses/${id}`).pipe(
+      tap(() => {
+        this.expenses = this.expenses.filter(e => e.id !== id);
+        this.saveToStorage();
+      }),
+      catchError(() => {
+        this.expenses = this.expenses.filter(e => e.id !== id);
+        this.saveToStorage();
+        return of({ success: true });
+      })
+    );
   }
 
   getSettlements(): Observable<SettlementSummaryResponse> {
+    return this.http.get<{ success: boolean; data: SettlementSummaryResponse }>(`${this.API_PREFIX}/settlements`).pipe(
+      map(res => res.data),
+      catchError(() => {
+        return of(this.computeLocalSettlements());
+      })
+    );
+  }
+
+  private computeLocalSettlements(): SettlementSummaryResponse {
     const totalCents = (amt: number) => Math.round(Number(amt) * 100);
     const toRupees = (paise: number) => Number((paise / 100).toFixed(2));
 
-    // split_equally
     const splitEqually = (amount: number, count: number): number[] => {
       if (count <= 0) return [];
       const cents = totalCents(amount);
@@ -125,7 +167,6 @@ export class ApiService {
       return shares;
     };
 
-    // total_paid
     const paid: Record<string, number> = {};
     for (const p of this.people) paid[p] = 0;
     for (const exp of this.expenses) {
@@ -136,7 +177,6 @@ export class ApiService {
       }
     }
 
-    // total_owed
     const owed: Record<string, number> = {};
     for (const p of this.people) owed[p] = 0;
     for (const exp of this.expenses) {
@@ -150,13 +190,11 @@ export class ApiService {
       });
     }
 
-    // net_balances
     const balances: Record<string, number> = {};
     for (const p of this.people) {
       balances[p] = toRupees(totalCents(paid[p] || 0) - totalCents(owed[p] || 0));
     }
 
-    // suggested_settlements (Greedy)
     const creditors = Object.entries(balances)
       .filter(([_, amt]) => amt > 0)
       .map(([person, amt]) => ({ person, amountPaise: totalCents(amt) }))
@@ -206,19 +244,28 @@ export class ApiService {
 
     const totalExpense = this.expenses.reduce((sum, e) => toRupees(totalCents(sum) + totalCents(e.amount)), 0);
 
-    return of({
+    return {
       people: [...this.people],
       expenses: [...this.expenses],
       totalExpense,
       summary,
       payments
-    });
+    };
   }
 
   clearTrip(): Observable<any> {
-    this.people = [];
-    this.expenses = [];
-    this.saveToStorage();
-    return of({ success: true });
+    return this.http.post<any>(`${this.API_PREFIX}/clear`, {}).pipe(
+      tap(() => {
+        this.people = [];
+        this.expenses = [];
+        this.saveToStorage();
+      }),
+      catchError(() => {
+        this.people = [];
+        this.expenses = [];
+        this.saveToStorage();
+        return of({ success: true });
+      })
+    );
   }
 }
