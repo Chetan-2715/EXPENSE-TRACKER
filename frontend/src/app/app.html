@@ -1,0 +1,308 @@
+<div class="app-wrapper">
+  <!-- Header Bar -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-icon">
+          <i class="bi bi-pie-chart-fill"></i>
+        </div>
+        <div>
+          <h1 class="brand-title">Smart Expense Splitter</h1>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button class="btn btn-outline" (click)="loadPromptExample()" title="Load Chetan (₹600), Rahul (₹300), Akash (₹0) example">
+          <i class="bi bi-lightning-charge-fill text-warning"></i> Load Example Case
+        </button>
+        <button class="btn btn-outline-danger" (click)="onClearTrip()" title="Clear trip data and start fresh">
+          <i class="bi bi-trash3"></i> Reset Trip
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <div class="grid-layout">
+      
+      <!-- ============================================== -->
+      <!-- LEFT COLUMN: INPUT COLLECTION (People & Expense) -->
+      <!-- ============================================== -->
+      <div class="left-col">
+
+        <!-- 1. TRIP PEOPLE -->
+        <div class="card" id="card-people">
+          <div class="card-header">
+            <div class="step-num">1</div>
+            <div>
+              <h2 class="card-title">People in the Trip</h2>
+              <p class="card-subtitle">Add the group members sharing expenses</p>
+            </div>
+            <span class="count-badge" *ngIf="people().length > 0">{{ people().length }} added</span>
+          </div>
+
+          <form (ngSubmit)="onAddPerson()" class="inline-form">
+            <div class="input-wrap">
+              <i class="bi bi-person input-icon"></i>
+              <input
+                id="input-person"
+                type="text"
+                class="form-control"
+                [(ngModel)]="newPersonName"
+                name="newPersonName"
+                placeholder="Enter person's name (e.g. Chetan, Rahul, Akash)..."
+                autocomplete="off"
+              />
+            </div>
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-plus-lg"></i> Add
+            </button>
+          </form>
+
+          <!-- People Chips List -->
+          <div class="people-chips-container mt-3">
+            <div *ngFor="let p of people()" class="person-chip">
+              <div class="chip-avatar">{{ getInitials(p) }}</div>
+              <span class="chip-name">{{ p }}</span>
+              <button type="button" class="chip-remove" (click)="onRemovePerson(p)" title="Remove {{ p }}">
+                &times;
+              </button>
+            </div>
+
+            <div *ngIf="people().length === 0" class="empty-hint">
+              <i class="bi bi-people"></i>
+              <span>No people added yet. Type a name above and click <strong>Add</strong>.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. RECORD EXPENSE -->
+        <div class="card mt-4" id="card-add-expense" [class.card-disabled]="people().length === 0">
+          <div class="card-header">
+            <div class="step-num">2</div>
+            <div>
+              <h2 class="card-title">Add Expense</h2>
+              <p class="card-subtitle">Specify what was spent, who paid, and who shares it</p>
+            </div>
+          </div>
+
+          <form (ngSubmit)="onAddExpense()" class="expense-form">
+            <!-- Description -->
+            <div class="form-group">
+              <label for="input-desc" class="form-label">Description</label>
+              <input
+                id="input-desc"
+                type="text"
+                class="form-control"
+                [(ngModel)]="expenseForm.description"
+                name="description"
+                placeholder="e.g. Dinner, Cabs, Hotel, Groceries..."
+                [disabled]="people().length === 0"
+              />
+            </div>
+
+            <!-- Amount & Payer Row -->
+            <div class="form-row">
+              <div class="form-group">
+                <label for="input-amount" class="form-label">Amount (₹)</label>
+                <div class="input-wrap">
+                  <span class="currency-sym">₹</span>
+                  <input
+                    id="input-amount"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    class="form-control pl-curr"
+                    [(ngModel)]="expenseForm.amount"
+                    name="amount"
+                    placeholder="0.00"
+                    [disabled]="people().length === 0"
+                  />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="select-payer" class="form-label">Who Paid?</label>
+                <select
+                  id="select-payer"
+                  class="form-control"
+                  [(ngModel)]="expenseForm.paid_by"
+                  name="paid_by"
+                  [disabled]="people().length === 0"
+                >
+                  <option value="" disabled>Choose payer...</option>
+                  <option *ngFor="let p of people()" [value]="p">{{ p }}</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Participants Checkbox List -->
+            <div class="form-group" id="participants-box">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <label class="form-label mb-0">Who Participated?</label>
+                <div class="participant-helpers" *ngIf="people().length > 0">
+                  <button type="button" class="btn-link" (click)="selectAllParticipants()">All</button>
+                  <span>•</span>
+                  <button type="button" class="btn-link" (click)="clearParticipants()">Clear</button>
+                </div>
+              </div>
+
+              <div class="participants-list">
+                <label *ngFor="let p of people()" class="participant-pill" [class.selected]="expenseForm.participants.includes(p)">
+                  <input
+                    type="checkbox"
+                    [checked]="expenseForm.participants.includes(p)"
+                    (change)="toggleParticipant(p)"
+                  />
+                  <span>{{ p }}</span>
+                </label>
+
+                <div *ngIf="people().length === 0" class="text-muted text-xs py-1">
+                  Add people in Step 1 first.
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary w-100" [disabled]="people().length === 0">
+              <i class="bi bi-receipt"></i> Record Expense
+            </button>
+          </form>
+        </div>
+
+        <!-- 3. RECORDED EXPENSES LIST -->
+        <div class="card mt-4" *ngIf="expenses().length > 0">
+          <div class="card-header">
+            <h3 class="card-title text-sm">
+              <i class="bi bi-list-check"></i> Recorded Expenses ({{ expenses().length }})
+            </h3>
+          </div>
+
+          <div class="expenses-list">
+            <div *ngFor="let exp of expenses(); let idx = index" class="expense-entry">
+              <div class="expense-entry-left">
+                <div class="expense-num">#{{ idx + 1 }}</div>
+                <div>
+                  <div class="expense-name">{{ exp.description }}</div>
+                  <div class="expense-meta">
+                    Paid by <strong>{{ exp.paid_by }}</strong> • Shared by ({{ exp.participants.join(', ') }})
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <div class="expense-amt">₹{{ exp.amount | number:'1.2-2' }}</div>
+                <button type="button" class="btn-icon-del" (click)="onDeleteExpense(exp.id)" title="Delete expense">
+                  <i class="bi bi-x-circle-fill"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ============================================== -->
+      <!-- RIGHT COLUMN: RESULTS & SETTLEMENTS           -->
+      <!-- ============================================== -->
+      <div class="right-col">
+
+        <!-- When No Data -->
+        <div *ngIf="!settlementData()" class="card empty-results-card">
+          <div class="empty-icon"><i class="bi bi-calculator"></i></div>
+          <h3>Awaiting Input</h3>
+          <p>
+            Add people and record shared expenses on the left.
+            The balances and minimal payment transactions will calculate automatically here.
+          </p>
+          <button class="btn btn-outline-primary btn-sm mt-3" (click)="loadPromptExample()">
+            <i class="bi bi-play-circle-fill"></i> Try Example (Chetan, Rahul, Akash)
+          </button>
+        </div>
+
+        <!-- Settlement Results -->
+        <div *ngIf="settlementData()" id="settlement-results-card" class="card results-card animate-fade">
+          <div class="card-header border-bottom">
+            <div>
+              <h2 class="card-title">Settlement Summary</h2>
+              <p class="card-subtitle">Equal cent split with integer paise accuracy</p>
+            </div>
+            <button class="btn btn-sm btn-outline" (click)="copyTextSummary()" title="Copy CLI formatted summary">
+              <i class="bi bi-clipboard"></i> Copy Summary
+            </button>
+          </div>
+
+          <!-- Total Group Expense Banner -->
+          <div class="total-spend-banner">
+            <div>
+              <span class="label">Total Group Expense</span>
+              <div class="total-val">₹{{ settlementData()!.totalExpense | number:'1.2-2' }}</div>
+            </div>
+            <div class="badge-fair">
+              <i class="bi bi-shield-check"></i> Balanced Split
+            </div>
+          </div>
+
+          <!-- SUMMARY TABLE -->
+          <div class="table-wrap mt-3">
+            <table class="summary-table">
+              <thead>
+                <tr>
+                  <th>Person</th>
+                  <th class="text-right">Paid (₹)</th>
+                  <th class="text-right">Share (₹)</th>
+                  <th class="text-right">Balance (₹)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let row of settlementData()!.summary">
+                  <td class="font-bold">{{ row.person }}</td>
+                  <td class="text-right font-mono">₹{{ row.paid | number:'1.2-2' }}</td>
+                  <td class="text-right font-mono text-muted">₹{{ row.owed | number:'1.2-2' }}</td>
+                  <td class="text-right font-mono font-bold"
+                      [class.text-success]="row.status === 'receives'"
+                      [class.text-danger]="row.status === 'owes'"
+                      [class.text-muted]="row.status === 'settled'">
+                    {{ row.balance >= 0 ? '+' : '' }}₹{{ row.balance | number:'1.2-2' }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- SUGGESTED PAYMENTS (Greedy) -->
+          <div class="payments-section mt-4">
+            <div class="section-title">
+              <i class="bi bi-arrow-left-right text-primary"></i>
+              <span>Suggested Payments ({{ settlementData()!.payments.length }})</span>
+            </div>
+            <p class="section-desc">Minimal transactions required to settle everyone:</p>
+
+            <div class="payments-list mt-2">
+              <div *ngFor="let pay of settlementData()!.payments; let idx = index" class="payment-card">
+                <div class="pay-step">#{{ idx + 1 }}</div>
+                <div class="pay-content">
+                  <span class="payer font-bold text-danger">{{ pay.payer }}</span>
+                  <div class="pay-arrow">
+                    <span class="pay-amount font-mono">₹{{ pay.amount | number:'1.2-2' }}</span>
+                    <i class="bi bi-arrow-right"></i>
+                  </div>
+                  <span class="payee font-bold text-success">{{ pay.payee }}</span>
+                </div>
+              </div>
+
+              <!-- Everyone is settled up -->
+              <div *ngIf="settlementData()!.payments.length === 0" class="all-settled-box">
+                <i class="bi bi-check-circle-fill text-success"></i>
+                <span>Everyone is settled up - no payments needed.</span>
+              </div>
+            </div>
+          </div>
+
+
+
+        </div>
+
+      </div>
+
+    </div>
+  </main>
+</div>

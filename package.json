@@ -1,0 +1,11 @@
+{
+  "name": "smart-expense-splitter",
+  "version": "1.0.0",
+  "description": "Smart Expense Splitter - Full Stack Web Application Case Study",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "start": "cd frontend && npm start",
+    "dev:backend": "cd backend && npm start",
+    "dev:frontend": "cd frontend && npm start"
+  }
+}

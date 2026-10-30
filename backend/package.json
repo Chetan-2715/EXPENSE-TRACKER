@@ -1,0 +1,15 @@
+{
+  "name": "smart-expense-splitter-backend",
+  "version": "1.0.0",
+  "description": "Smart Expense Splitter REST API Backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "node verify-api.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  }
+}
